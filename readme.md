@@ -10,6 +10,8 @@ Reporters at The News & Observer analyzed precinct sort files from 2020 and 2016
 
 ## Top-level findings
 
+![](images/screen.png)
+
 [See a fullscreen version of this interactive map here.](https://datawrapper.dwcdn.net/2ZqwZ/1/)
 
 Overall, growth in Democratic votes outpaced Republican votes in the presidential elections between 2016 and 2020.
@@ -61,11 +63,13 @@ That leaves 10 precincts that matched vote totals for Trump in 2016/2020 and 9 f
 
 ### Distribution of precincts by swing in victory margin from 2016 to 2020
 
-![](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_margin.png?token=AAJBTYZ46N7EEO77NYZ3DVDACIVEI)
-![enter image description here](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_margin_split.png?token=AAJBTYY76OEU65RDMAISLOTACIVHA)
+![](images/histogram_margin.png)
+![](images//histogram_margin_split.png)
+
 ### Distribution of precincts by swing in net votes from 2016 to 2020
-![enter image description here](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_netvotes.png?token=AAJBTY2U2EVRCMGNOGXNB6TACIVIE)
-![enter image description here](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_netvotes_split.png?token=AAJBTY3YXHJQKTMZLNBUML3ACIVJ6)
+![](images/histogram_netvotes.png)
+![](images/histogram_netvotes_split.png)
+
 ## The data
 
 The News & Observer used the following publicly available data from the N.C. State Board of elections
