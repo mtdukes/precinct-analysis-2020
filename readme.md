@@ -10,7 +10,7 @@ Reporters at The News & Observer analyzed precinct sort files from 2020 and 2016
 
 ## Top-level findings
 
-![](images/screen.png)
+![](images/screen.gif)
 
 [See a fullscreen version of this interactive map here.](https://datawrapper.dwcdn.net/2ZqwZ/1/)
 
