@@ -9,8 +9,6 @@ Reporters at The News & Observer analyzed precinct sort files from 2020 and 2016
 **_PLEASE NOTE: These findings are preliminary and still subject to review and change._**
 
 ## Top-level findings
-<iframe title="Tracking the swing" aria-label="Map" id="datawrapper-chart-rRBLf" src="https://datawrapper.dwcdn.net/rRBLf/6/" scrolling="no" frameborder="0" style="width: 0; min-width: 100% !important; border: none;" height="457"></iframe><script type="text/javascript">!function(){"use strict";window.addEventListener("message",(function(a){if(void 0!==a.data["datawrapper-height"])for(var e in a.data["datawrapper-height"]){var t=document.getElementById("datawrapper-chart-"+e)||document.querySelector("iframe[src*='"+e+"']");t&&(t.style.height=a.data["datawrapper-height"][e]+"px")}}))}();
-</script>
 
 [See a fullscreen version of this interactive map here.](https://datawrapper.dwcdn.net/2ZqwZ/1/)
 
@@ -63,8 +61,11 @@ That leaves 10 precincts that matched vote totals for Trump in 2016/2020 and 9 f
 
 ### Distribution of precincts by swing in victory margin from 2016 to 2020
 
+![](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_margin.png?token=AAJBTYZ46N7EEO77NYZ3DVDACIVEI)
+![enter image description here](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_margin_split.png?token=AAJBTYY76OEU65RDMAISLOTACIVHA)
 ### Distribution of precincts by swing in net votes from 2016 to 2020
-
+![enter image description here](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_netvotes.png?token=AAJBTY2U2EVRCMGNOGXNB6TACIVIE)
+![enter image description here](https://raw.githubusercontent.com/mtdukes/precinct-analysis-2020/main/images/histogram_netvotes_split.png?token=AAJBTY3YXHJQKTMZLNBUML3ACIVJ6)
 ## The data
 
 The News & Observer used the following publicly available data from the N.C. State Board of elections
