@@ -1,3 +1,4 @@
+
 # 2020 precinct sort analysis
 
 Voters who cast their ballots provisionally or by absentee in North Carolina elections aren't placed in their assigned precincts for the initial results. That happens weeks later, when the N.C. State Board of Elections produces county-level precinct sort files.
@@ -14,37 +15,34 @@ Reporters at The News & Observer analyzed precinct sort files from 2020 and 2016
 
 [See a fullscreen version of this interactive map here.](https://datawrapper.dwcdn.net/2ZqwZ/1/)
 
-Overall, growth in Democratic votes outpaced Republican votes in the presidential elections between 2016 and 2020.
+Overall, growth in Democratic votes outpaced growth in Republican votes in the presidential elections between 2016 and 2020.
 
+### Change in party votes, 2016 to 2020
 Candidate|Votes in 2016|Votes in 2020|Raw change|Percent change
 --|--|--|--|--
 Donald J. Trump|2,363,065|2,758,845|395,780|16.75
 Clinton/Biden|2,189,315|2,684,438|495,123|22.62
 
-Because of precinct changes and leftover votes in administrative districts, matching 2016 and 2020 precinct data isn't always perfect. But the matched results are largely similar to the overall results.
-
-Candidate|Votes in 2016|Votes in 2020|Raw change|Percent change
---|--|--|--|--
-Donald J. Trump|2,302,330|2,688,615|386,285|16.78
-Clinton/Biden|2,109,164|2,598,803|489,639|23.21
-
-Both views of the data show a net shift of about 100,000 votes to Democrats in the presidential race.
-
 From 2016 to 2020, only 139 of 2,658 precincts flipped from Biden to Trump or vice versa. But a vast majority of those flips went to Biden – and they accounted for larger net gains for Democrats.
 
+### Flipped precincts, 2016 to 2020
 Flip|Precinct count| Raw vote swing
 --|--|--
 Trump to Biden|115|34,072
 Biden to Trump|24|2,108
 
 Biden outperformed Clinton's margin in more than 1,600 precincts across the state in 2020, compared to the 1,000 or so precincts in which Trump outperformed his 2016 showing.
-Outperformer|Precinct count|Raw vote swing
+
+### Where candidates overperformed
+Candidate|Precinct count|Raw vote swing
 --|--|--
 Biden|1,611|291,417
 Trump|987|108,167
 Unmatched|60|NA
 
 Compared to 2016, Biden lost votes in about twice as many precincts as Trump. That translates into a loss of more than twice as many voters.
+
+### Where candidates lost votes
 Candidate|Precincts with lost votes|Total votes lost
 --|--|--
 Trump|143|8,029
@@ -52,12 +50,44 @@ Biden|271|18,430
 
 Conversely, Biden improved on Clinton's vote totals in a smaller number of precincts than Trump did. But those precincts translated in a larger number of actual votes.
 
+### Where candidates gained votes
 Candidate|Precincts with gained votes|Total votes gained
 --|--|--
 Trump|2,445|394,314
 Biden|2,318|508,069
 
 That leaves 10 precincts that matched vote totals for Trump in 2016/2020 and 9 for Democrats.
+
+Compared to 2016, precinct-level data shows Trump picked up just over a dozen additional majority-minority districts in 2020.
+
+### Majority-minority precincts won, 2016 to 2020
+Candidates|Precincts won in 2016|Precincts won in 2020
+--|--|--
+Biden/Clinton|538  (96.1%)|600  (93.6%)   
+Trump | 22   (3.9%)|41   (6.4%)    
+Total|560|641
+
+But like in 2016, Trump failed to win a single majority Black precinct.
+
+### Majority Black precincts won, 2016 to 2020
+
+Candidates|Precincts won in 2016|Precincts won in 2020
+--|--|--
+Biden/Clinton|379|314
+Trump|0|0
+Total|379|314
+
+In 2020, Trump carried all majority American Indian/Alaskan Native precincts, three more than in 2016.
+
+### Majority American Indian precincts won, 2016 to 2020
+Candidates|Precincts won in 2016|Precincts won in 2020
+--|--|--
+Biden/Clinton|3|0
+Trump|13|16    
+Total|16|16
+
+### Margin of victory vs. percentage of nonwhite voters by precinct, 2020
+![](images/scatterplot_nonwhite_wins_na_mark2020.png)
 
 ## Histograms
 
@@ -81,3 +111,14 @@ The News & Observer used the following publicly available data from the N.C. Sta
 
 ## Methodology
 For a detailed breakdown of the code used for this analysis, [see our R script here](https://github.com/mtdukes/precinct-analysis-2020/blob/main/ps_analysis_clean.R).
+
+Because of precinct changes and leftover votes in administrative districts, matching 2016 and 2020 precinct data isn't always perfect. But the matched results are largely similar to the overall results.
+
+### Comparing matched precincts
+
+Candidate|Votes in 2016|Votes in 2020|Raw change|Percent change
+--|--|--|--|--
+Donald J. Trump|2,302,330|2,688,615|386,285|16.78
+Clinton/Biden|2,109,164|2,598,803|489,639|23.21
+
+Both views of the data show a net shift of about 100,000 votes to Democrats in the presidential race.

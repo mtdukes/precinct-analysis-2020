@@ -4,7 +4,6 @@
 
 # Setting up --------------------------------------------------------------
 
-
 #set our working directory
 setwd("~/Dropbox/projects/newsobserver/precinct_sort/data")
 
@@ -15,10 +14,10 @@ library(janitor)
 library(knitr)
 library(stringr)
 library(scales)
+library(readr)
 
 
 # Loading data ------------------------------------------------------------
-
 
 #Data through the State Board of Elections FTP site
 #https://dl.ncsbe.gov/?prefix=ENRS/2020_11_03/results_precinct_sort/
@@ -107,9 +106,48 @@ nc_precincts_data <- as.data.frame(nc_precincts) %>%
 nc_precincts_data2016 <- as.data.frame(nc_precincts2016) %>% 
   select(-geometry)
 
+#load our 2016 registration snapshot
+#check for the encoding problems first
+guess_encoding("registration_snapshots/VR_Snapshot_20161108.txt")
+
+registration2016 <- read.delim('registration_snapshots/VR_Snapshot_20161108.txt',
+                              fileEncoding = 'UTF-16LE',
+                              sep = '\t',
+                              comment.char = '',
+                              quote = '',
+                              colClasses = "character",
+                              skipNul = TRUE)
+
+registration2020 <- read.delim('registration_snapshots/VR_Snapshot_20201103.txt',
+                               fileEncoding = 'UTF-16LE',
+                               sep = '\t',
+                               comment.char = '',
+                               quote = '',
+                               colClasses = "character",
+                               skipNul = TRUE)
+
+#these are really large files, so go ahead and remove denied (D) and removed (R)
+#voters from each file (and keep our temporary voters in for now)
+#and get rid of all the columns we don't really need for our analysis
+registration2016 <- registration2016 %>% 
+  filter(status_cd == 'A' | status_cd == 'I' | status_cd == 'T') %>% 
+  select(snapshot_dt, county_id, county_desc, voter_reg_num, ncid, status_cd, 
+         voter_status_desc, reason_cd, voter_status_reason_desc, absent_ind, 
+         name_prefx_cd, last_name, first_name, midl_name, name_sufx_cd, race_code, 
+         race_desc, ethnic_code, ethnic_desc, party_cd, party_desc, sex_code, 
+         sex, age, precinct_abbrv, precinct_desc, vtd_abbrv, vtd_desc, age_group
+         )
+
+registration2020 <- registration2020 %>% 
+  filter(status_cd == 'A' | status_cd == 'I' | status_cd == 'T') %>% 
+  select(snapshot_dt, county_id, county_desc, voter_reg_num, ncid, status_cd, 
+         voter_status_desc, reason_cd, voter_status_reason_desc, absent_ind, 
+         name_prefx_cd, last_name, first_name, midl_name, name_sufx_cd, race_code, 
+         race_desc, ethnic_code, ethnic_desc, party_cd, party_desc, sex_code, 
+         sex, age, precinct_abbrv, precinct_desc, vtd_abbrv, vtd_desc, age_group
+  )
 
 # Gut checks --------------------------------------------------------------
-
 
 #sum up the votes for president to make sure we got it all.
 #5,535,363 calculated vs 5,524,802 on the dashboard
@@ -135,13 +173,18 @@ precinct_sort2016 %>%
   distinct(county, precinct_code) %>% 
   nrow()
 
-#2,659 precincts in the 2020 shapefile data
-nc_precincts %>% 
-  distinct(county_nam, prec_id)
+#2,658 precincts in the 2020 shapefile data
+#note the duplicate in Cumberland County
+nc_precincts %>%
+  mutate(county_nam = toupper(county_nam)) %>% 
+  distinct(county_nam, prec_id) %>% 
+  nrow()
 
 #2,704 precincts in the 2016 shapefile data
-nc_precincts2016 %>% 
-  distinct(COUNTY_NAM, PREC_ID)
+nc_precincts2016 %>%
+  mutate(COUNTY_NAM = toupper(COUNTY_NAM)) %>% 
+  distinct(COUNTY_NAM, PREC_ID) %>% 
+  nrow()
 
 #3,065 precincts for calculating biden's margin of win/loss
 #and a total of 5,443,283 votes for Trump/Biden
@@ -359,8 +402,7 @@ precinct_sort2020 %>%
 #TOTAL: 1567
 #everything else is unsorted provisional/absentee etc
 
-# Mapping -----------------------------------------------------------------
-
+# Matching precinct data -----------------------------------------------------------------
 
 #create a new file that matches up the precinct data from 2016 and 2020
 #and calculates raw/pct point margins of victories and their changes
@@ -434,6 +476,9 @@ precinct_performance <- nc_precincts %>%
   relocate(trump_pickup, .after = trump_margin2016) %>%
   arrange(abs(trump_pickup))
 
+
+# Mapping -----------------------------------------------------------------
+
 #map the data in a diverging choropleth using the percentage points
 #of trump swing from 2016 to 2020
 precinct_performance %>%
@@ -447,14 +492,8 @@ precinct_performance %>%
     direction = -1,
     palette = 'RdBu',
     name = 'Point swing\nin Trump margin,\n2016 to 2020',
-    na.value = '#f0f0f0'
-  ) +
-  scale_fill_distiller(
-    type='div',
-    direction = -1,
-    palette = 'RdBu',
-    name = 'Point swing\nin Trump margin,\n2016 to 2020',
-    na.value = '#f0f0f0'
+    na.value = '#f0f0f0',
+    aesthetics = c("color", "fill")
   ) +
   labs(caption = "SOURCE: NC State Board of Elections")
 
@@ -466,7 +505,7 @@ precinct_performance %>%
   arrange(abs(trump_pickup)) %>% 
   ggplot(aes(
     geometry = st_centroid(geometry), 
-    size = abs(gop2016+gop2020-(dem2016+dem2020)), 
+    size = abs((gop2020 - gop2016) - (dem2020 - dem2016)), 
     color = trump_pickup, 
     alpha = abs(trump_pickup)
     )) +
@@ -482,21 +521,20 @@ precinct_performance %>%
     na.value = '#f0f0f0'
   ) +
   scale_size_area(
-    #range = c(0.1,5),
     max_size = 5,
     oob = squish,
-    limits = c(1,5000),
+    limits = c(1,1500),
     name = NULL,
     guide = 'none'
   ) +
   scale_alpha(
     guide = 'none',
-    range = c(0.5,0.9),
+    range = c(0.5,0.8),
     oob = squish,
     limits = c(-20,20),
   ) +
   labs(caption = "SOURCE: NC State Board of Elections",
-       title = 'Point swing in Trump margin, 2016 to 2020')
+       title = 'Point swing in Trump victory margin, 2016 to 2020')
 
 #separate out the net gains for Trump/Republicans
 #and specify the ranges to keep coloring the same
@@ -506,7 +544,7 @@ precinct_performance %>%
   arrange(abs(trump_pickup)) %>% 
   ggplot(aes(
     geometry = st_centroid(geometry), 
-    size = abs(gop2016+gop2020-(dem2016+dem2020)), 
+    size = abs((gop2020 - gop2016) - (dem2020 - dem2016)), 
     color=trump_pickup, 
     alpha = abs(trump_pickup)
   )) +
@@ -522,16 +560,15 @@ precinct_performance %>%
     na.value = '#f0f0f0'
   ) +
   scale_size_area(
-    #range = c(0.1,5),
     max_size = 5,
     oob = squish,
-    limits = c(1,5000),
+    limits = c(1,1500),
     name = NULL,
     guide = 'none'
   ) +
   scale_alpha(
     guide = 'none',
-    range = c(0.5,0.9),
+    range = c(0.5,0.8),
     oob = squish,
     limits = c(-20,20),
   ) +
@@ -546,7 +583,7 @@ precinct_performance %>%
   arrange(abs(trump_pickup)) %>% 
   ggplot(aes(
     geometry = st_centroid(geometry), 
-    size = abs(gop2016+gop2020-(dem2016+dem2020)), 
+    size = abs((gop2020 - gop2016) - (dem2020 - dem2016)), 
     color=trump_pickup, 
     alpha = abs(trump_pickup)
   )) +
@@ -562,16 +599,15 @@ precinct_performance %>%
     na.value = '#f0f0f0'
   ) +
   scale_size_area(
-    #range = c(0.1,5),
     max_size = 5,
     oob = squish,
-    limits = c(1,5000),
+    limits = c(1,1500),
     name = NULL,
     guide = 'none'
   ) +
   scale_alpha(
     guide = 'none',
-    range = c(0.5,0.9),
+    range = c(0.5,0.8),
     oob = squish,
     limits = c(-20,20),
   ) +
@@ -585,7 +621,7 @@ precinct_performance %>%
   arrange(abs(trump_pickup)) %>% 
   ggplot(aes(
     geometry = st_centroid(geometry), 
-    size = abs(gop2016+gop2020-(dem2016+dem2020)), 
+    size = abs((gop2020 - gop2016) - (dem2020 - dem2016)), 
     color=trump_pickup, 
     alpha = abs(trump_pickup)
   )) +
@@ -601,16 +637,15 @@ precinct_performance %>%
     na.value = '#f0f0f0'
   ) +
   scale_size_area(
-    #range = c(0.1,5),
     max_size = 5,
-    limits = c(50,500),
+    limits = c(1,1500),
     oob = squish,
     name = NULL,
     guide = 'none'
   ) +
   scale_alpha(
     guide = 'none',
-    range = c(0.5,0.9),
+    range = c(0.5,0.8),
     oob = squish,
     limits = c(-20,20),
   ) +
@@ -636,8 +671,8 @@ dw_centroids %>%
   filter(!is.na(trump_pickup)) %>%
   as.data.frame() %>%
   mutate(swing_pctpt = abs(trump_pickup)) %>% 
-  mutate(swing_raw = abs(gop2016+gop2020-(dem2016+dem2020))) %>% 
-  mutate(trump_pickup_raw = gop2016+gop2020-(dem2016+dem2020)) %>% 
+  mutate(swing_raw = abs((gop2020 - gop2016) - (dem2020 - dem2016))) %>% 
+  mutate(trump_pickup_raw = (gop2020 - gop2016) - (dem2020 - dem2016)) %>% 
   rename(trump_pickup_pctpt = trump_pickup) %>% 
   select(id, lat, lng, enr_desc, county_nam,
          trump_pickup_pctpt, trump_pickup_raw, swing_raw, swing_pctpt) %>%
@@ -769,3 +804,733 @@ nc_precincts %>%
   mutate(dr2020 = gop2020 + dem2020) %>% 
   mutate(dr2016 = gop2016 + dem2016) %>% 
   summarize(total2016 = sum(dr2016, na.rm=TRUE))
+
+# Demographics by precinct ------------------------------------------------
+
+#create a dataframe of demographics by precinct in 2020
+#and join with our precinct sort file
+demo2020 <- registration2020 %>%
+  filter(precinct_abbrv != ' ') %>%
+  count(county_desc, 
+        precinct_abbrv, 
+        race = ifelse(race_desc == 'WHITE', 'white', 
+                      ifelse(race_desc == 'BLACK or AFRICAN AMERICAN', 'black',
+                             ifelse(race_desc == 'INDIAN AMERICAN or ALASKA NATIVE', 'indian_aknative','other'
+                                    ))
+                      ), 
+        name = 'voters'
+        ) %>%
+  spread(race, voters) %>%
+  replace_na(list(black = 0, indian_aknative = 0, other = 0)) %>%
+  mutate(total = white + black + indian_aknative + other) %>% 
+  mutate(pct_nonwhite = round(((black + indian_aknative + other)/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
+  mutate(pct_black = round((black/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
+  mutate(pct_indian_aknative = round((indian_aknative/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
+  left_join(
+    precinct_sort2020 %>% 
+      filter(contest_title == 'US PRESIDENT') %>% 
+      filter(candidate_name == 'Joseph R. Biden' | candidate_name == 'Donald J. Trump') %>%
+      group_by(county, precinct_code) %>%
+      summarize(total_dr = sum(vote_ct)) %>% 
+      left_join(precinct_sort2020 %>% 
+                  filter(contest_title == 'US PRESIDENT') %>% 
+                  filter(candidate_name == 'Joseph R. Biden') %>%
+                  group_by(county, precinct_code) %>%
+                  summarize(biden_votes = sum(vote_ct)),
+                by = c('county','precinct_code')
+      ) %>% 
+      left_join(precinct_sort2020 %>% 
+                  filter(contest_title == 'US PRESIDENT') %>% 
+                  filter(candidate_name == 'Donald J. Trump') %>%
+                  group_by(county, precinct_code) %>%
+                  summarize(trump_votes = sum(vote_ct)),
+                by = c('county','precinct_code')
+      ) %>% 
+      mutate(trump_margin = round(((trump_votes - biden_votes) / total_dr) * 100, digits = 2) ),
+    by = c('county_desc' = 'county', 'precinct_abbrv' = 'precinct_code')
+  )
+
+#create a dataframe of demographics by precinct in 2016
+#and join with our precinct sort file
+demo2016 <- registration2016 %>%
+  filter(precinct_abbrv != ' ') %>%
+  count(county_desc, 
+        precinct_abbrv, 
+        race = ifelse(race_desc == 'WHITE', 'white', 
+                      ifelse(race_desc == 'BLACK or AFRICAN AMERICAN', 'black',
+                             ifelse(race_desc == 'INDIAN AMERICAN or ALASKA NATIVE', 'indian_aknative','other'
+                             ))
+        ), 
+        name = 'voters'
+  ) %>%
+  spread(race, voters) %>%
+  replace_na(list(black = 0, indian_aknative = 0, other = 0)) %>%
+  mutate(total = white + black + indian_aknative + other) %>% 
+  mutate(pct_nonwhite = round(((black + indian_aknative + other)/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
+  mutate(pct_black = round((black/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
+  mutate(pct_indian_aknative = round((indian_aknative/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
+  left_join(
+    precinct_sort2016 %>% 
+      filter(contest_title == 'US PRESIDENT') %>% 
+      filter(candidate_name == 'Hillary Clinton' | candidate_name == 'Donald J. Trump') %>%
+      group_by(county, precinct_code) %>%
+      summarize(total_dr = sum(vote_ct)) %>% 
+      left_join(precinct_sort2016 %>% 
+                  filter(contest_title == 'US PRESIDENT') %>% 
+                  filter(candidate_name == 'Hillary Clinton') %>%
+                  group_by(county, precinct_code) %>%
+                  summarize(clinton_votes = sum(vote_ct)),
+                by = c('county','precinct_code')
+      ) %>% 
+      left_join(precinct_sort2016 %>% 
+                  filter(contest_title == 'US PRESIDENT') %>% 
+                  filter(candidate_name == 'Donald J. Trump') %>%
+                  group_by(county, precinct_code) %>%
+                  summarize(trump_votes = sum(vote_ct)),
+                by = c('county','precinct_code')
+      ) %>% 
+      mutate(trump_margin = round(((trump_votes - clinton_votes) / total_dr) * 100, digits = 2) ),
+    by = c('county_desc' = 'county', 'precinct_abbrv' = 'precinct_code')
+  )
+
+# Graphing 2016 race by precinct -----------------------------------------------
+
+#plot nonwhite percentages and wins for both dems and gop
+demo2016 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Clinton win')) %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+#plot nonwhite percentages and wins for just gop
+demo2016 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Clinton win')) %>%
+  filter(margin_change == 'Trump win') %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c('#ca0020'),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+#plot nonwhite percentages and wins for just dems
+demo2016 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Clinton win')) %>%
+  filter(margin_change == 'Clinton win') %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+#plot black percentages and wins for both dems and gop
+demo2020 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Clinton win')) %>% 
+  ggplot(aes(x = pct_black, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% Black voters in precinct') +
+  ylab('Margin of victory')
+
+#plot nonwhite percentages and wins for both dems and gop
+demo2016 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Clinton win')) %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)), 
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point(
+    data = . %>% filter(pct_indian_aknative <= 50)
+    ) +
+  geom_point(
+    data = . %>% filter(pct_indian_aknative > 50),
+    shape = 18,
+    size = 4,
+    alpha = 0.8
+    ) +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+# Graphing 2020 race by precinct -----------------------------------------------
+
+#plot nonwhite percentages and wins for both dems and gop
+demo2020 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Biden win')) %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+#plot nonwhite percentages and wins for just gop
+demo2020 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Biden win')) %>%
+  filter(margin_change == 'Trump win') %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c('#ca0020'),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+#plot nonwhite percentages and wins for just dems
+demo2020 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Biden win')) %>%
+  filter(margin_change == 'Biden win') %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+#plot black percentages and wins forboth dems and gop
+demo2020 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Biden win')) %>% 
+  ggplot(aes(x = pct_black, y=(abs(trump_margin)),
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point() +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% Black voters in precinct') +
+  ylab('Margin of victory')
+
+#plot nonwhite percentages and wins for both dems and gop
+demo2020 %>%
+  mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Biden win')) %>% 
+  ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)), 
+             color = margin_change, 
+             size = total, 
+             alpha = total)) +
+  geom_point(
+    data = . %>% filter(pct_indian_aknative <= 50)
+  ) +
+  geom_point(
+    data = . %>% filter(pct_indian_aknative > 50),
+    shape = 18,
+    size = 4,
+    alpha = 0.8
+  ) +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  scale_size_area(
+    max_size = 5,
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  scale_alpha(
+    guide = 'none',
+    range = c(0.2,0.7),
+    oob = squish,
+    limits = c(100,10000)
+  ) +
+  guides(
+    size = FALSE,
+    alpha = FALSE,
+    color = guide_legend(override.aes = list(shape = 15, size = 5))
+  ) +
+  xlab('% nonwhite voters in precinct') +
+  ylab('Margin of victory')
+
+
+# Distribution of margin swing ------------------------------------------
+
+#simple histogram showing the distribution of swing in victory margin
+precinct_performance_data %>% 
+  filter(!is.na(trump_pickup)) %>%
+  mutate(margin_change = ifelse(trump_pickup >= 0, 'Favors Trump','Favors Biden')) %>% 
+  ggplot(aes(x = trump_pickup, 
+             color = NA,
+             fill = margin_change
+             )) + 
+  geom_histogram(binwidth = 1, alpha = 0.6, position = 'identity') +
+  geom_vline(aes(xintercept = mean(trump_pickup)),
+             color="grey50", size=1, alpha = 0.6) +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  ylab('Count of precincts') +
+  xlab('Swing in victory margin')
+
+#now align our trump/biden pickups
+#to see how they compare
+precinct_performance_data %>% 
+  filter(!is.na(trump_pickup)) %>%
+  mutate(margin_change = ifelse(trump_pickup >= 0, 'Favors Trump','Favors Biden')) %>% 
+  ggplot(aes(x = abs(trump_pickup), 
+             color = NA,
+             fill = margin_change
+  )) + 
+  geom_histogram(binwidth = 1, alpha = 0.6, position = 'dodge') +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  ylab('Count of precincts') +
+  xlab('Swing in victory margin')
+
+#precincts aren't equally sized, so how does this impact
+#the magnitude of actual votes across our precincts
+precinct_performance_data %>% 
+  filter(!is.na(trump_pickup)) %>%
+  mutate(trump_pickup_raw = (gop2020 - gop2016) - (dem2020 - dem2016)) %>% 
+  mutate(margin_change = ifelse(trump_pickup_raw >= 0, 'Favors Trump','Favors Biden')) %>% 
+  ggplot(aes(x = trump_pickup_raw, 
+             color = NA,
+             fill = margin_change
+  )) + 
+  geom_histogram(binwidth = 50, alpha = 0.6, position = 'identity') +
+  geom_vline(aes(xintercept = mean(trump_pickup_raw)),
+             color="grey50", size=1, alpha = 0.6) +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  ylab('Count of precincts') +
+  xlab('Swing in net votes')
+
+#now align the histograms to see how they compare
+precinct_performance_data %>% 
+  filter(!is.na(trump_pickup)) %>%
+  mutate(trump_pickup_raw = (gop2020 - gop2016) - (dem2020 - dem2016) ) %>% 
+  mutate(margin_change = ifelse(trump_pickup_raw >= 0, 'Favors Trump','Favors Biden')) %>% 
+  ggplot(aes(x = abs(trump_pickup_raw), 
+             color = NA,
+             fill = margin_change
+  )) + 
+  geom_histogram(binwidth = 50, alpha = 0.6, position = 'dodge') +
+  theme_minimal() +
+  scale_color_manual(
+    values = c("#0571b0", "#ca0020"),
+    name = NULL,
+    aesthetics = c("color", "fill")
+  ) +
+  ylab('Count of precincts') +
+  xlab('Swing in net votes')
+
+# Questions to answer -----------------------------------------------------
+
+#simplify our spatial data for analysis
+precinct_performance_data <- precinct_performance %>% 
+  as.data.frame() %>%
+  select(-geometry, -county_pre, -of_prec_id, -blockid, -id)
+
+#overall, growth in Dem votes outpaced GOP votes from 2016 to 2020
+#with 22.6% change vs. 16.8% change
+precinct_sort2016 %>% 
+  filter(contest_title == 'US PRESIDENT') %>% 
+  filter(candidate_name == 'Hillary Clinton' | candidate_name == 'Donald J. Trump') %>%
+  mutate(candidate = ifelse(candidate_name == 'Hillary Clinton', 'Clinton/Biden','Donald J. Trump')) %>% 
+  group_by(candidate) %>% 
+  summarize(votes2016 = sum(vote_ct)) %>%
+  left_join(
+    precinct_sort2020 %>% 
+      filter(contest_title == 'US PRESIDENT') %>% 
+      filter(candidate_name == 'Joseph R. Biden' | candidate_name == 'Donald J. Trump') %>%
+      mutate(candidate = ifelse(candidate_name == 'Joseph R. Biden', 'Clinton/Biden','Donald J. Trump')) %>% 
+      group_by(candidate) %>% 
+      summarize(votes2020 = sum(vote_ct)),
+    by = 'candidate'
+  ) %>%
+  mutate(raw_change = votes2020 - votes2016) %>%
+  mutate(pct_change = round(((votes2020 - votes2016)/votes2016)*100,digits= 2)) %>% 
+  arrange(desc(votes2020)) %>% 
+  kable('simple')
+
+#check to make sure these trends are similar in our matched precincts
+#with 23.2% change vs. 16.8% change
+precinct_performance_data %>%
+  filter(!is.na(trump_pickup)) %>%
+  mutate(candidate = 'Donald J. Trump') %>%
+  group_by(candidate) %>% 
+  summarize(votes2016 = sum(gop2016), votes2020 = sum(gop2020)) %>% 
+  rbind(.,
+        precinct_performance_data %>%
+          filter(!is.na(trump_pickup)) %>%
+          mutate(candidate = 'Clinton/Biden') %>%
+          group_by(candidate) %>% 
+          summarize(votes2016 = sum(dem2016), votes2020 = sum(dem2020))
+  ) %>% 
+  mutate(raw_change = votes2020 - votes2016) %>%
+  mutate(pct_change = round(((votes2020 - votes2016)/votes2016)*100,digits= 2)) %>% 
+  arrange(desc(votes2020)) %>% 
+  kable('simple')
+
+#to verify another way, for the entire state, the net swing was 103,354 
+#toward the Democrats across the 2,598 matching precincts
+precinct_performance_data %>%
+  filter(!is.na(trump_pickup)) %>%
+  summarize(precinct_count = n(),
+            vote_swing = sum((gop2020 - gop2016) - (dem2020 - dem2016))
+  ) %>%
+  kable('simple')
+
+#139 precincts flipped from Biden to Trump or vice versa
+#Of those, 24, or 17% flipped for Trump
+precinct_performance_data %>%
+  filter(!is.na(trump_pickup)) %>% 
+  filter(trump_margin2016 * trump_margin2020 < 0) %>%
+  group_by(trump_flip = trump_margin2020 > 0) %>% 
+  summarize(count = n(),
+            vote_swing = abs(sum((gop2020 - gop2016) - (dem2020 - dem2016)))
+  ) %>% 
+  adorn_totals() %>%
+  kable('simple')
+
+#Trump overperformed or matched in 987 precincts vs. Biden's 1611
+#Trump netted 108,167 votes across the precincts where he overperformed
+#compared to Biden's 291,417 across the precincts where he overperformed
+precinct_performance_data %>% 
+  group_by(trump_overperform = trump_pickup >= 0) %>% 
+  summarize(precinct_count = n(),
+            vote_swing = sum(abs((gop2020 - gop2016) - (dem2020 - dem2016)))
+  ) %>%
+  adorn_totals() %>%
+  kable('simple')
+
+#Dems lost votes in about twice as many precincts than Trump
+#which translates into more than twice as many voters
+precinct_performance_data %>% 
+  filter(!is.na(trump_pickup)) %>% 
+  mutate(gop_change_raw = gop2020 - gop2016) %>%
+  mutate(gop_change_pct = round(((gop2020 - gop2016)/gop2016)*100, digits = 2)) %>%
+  filter(gop_change_raw < 0) %>%
+  mutate(candidate = 'Donald J. Trump') %>% 
+  group_by(candidate) %>% 
+  summarize(lost_vote_prec = n(), total_votes_lost = sum(gop_change_raw)) %>% 
+  rbind(.,
+        precinct_performance_data %>% 
+          filter(!is.na(trump_pickup)) %>% 
+          mutate(dem_change_raw = dem2020 - dem2016) %>%
+          mutate(dem_change_pct = round(((dem2020 - dem2016)/dem2016)*100, digits = 2)) %>%
+          filter(dem_change_raw < 0) %>%
+          mutate(candidate = 'Joseph R. Biden') %>% 
+          group_by(candidate) %>% 
+          summarize(lost_vote_prec = n(), total_votes_lost = sum(dem_change_raw))
+  )
+
+#Biden won more votes in a smaller number of precincts than Trump
+#But that translated to way more actual votes
+precinct_performance_data %>% 
+  filter(!is.na(trump_pickup)) %>% 
+  mutate(gop_change_raw = gop2020 - gop2016) %>%
+  mutate(gop_change_pct = round(((gop2020 - gop2016)/gop2016)*100, digits = 2)) %>%
+  filter(gop_change_raw > 0) %>%
+  mutate(candidate = 'Donald J. Trump') %>% 
+  group_by(candidate) %>% 
+  summarize(gain_vote_prec = n(), total_votes_gain = sum(gop_change_raw)) %>% 
+  rbind(.,
+        precinct_performance_data %>% 
+          filter(!is.na(trump_pickup)) %>% 
+          mutate(dem_change_raw = dem2020 - dem2016) %>%
+          mutate(dem_change_pct = round(((dem2020 - dem2016)/dem2016)*100, digits = 2)) %>%
+          filter(dem_change_raw > 0) %>%
+          mutate(candidate = 'Joseph R. Biden') %>% 
+          group_by(candidate) %>% 
+          summarize(gain_vote_prec = n(), total_votes_gain = sum(dem_change_raw))
+  )
+
+#for completeness, do the calculation for matching votes
+precinct_performance_data %>% 
+  filter(!is.na(trump_pickup)) %>% 
+  mutate(gop_change_raw = gop2020 - gop2016) %>%
+  mutate(gop_change_pct = round(((gop2020 - gop2016)/gop2016)*100, digits = 2)) %>%
+  filter(gop_change_raw == 0) %>%
+  mutate(candidate = 'Donald J. Trump') %>% 
+  group_by(candidate) %>% 
+  summarize(match_vote_prec = n(), total_votes_match = sum(gop_change_raw)) %>% 
+  rbind(.,
+        precinct_performance_data %>% 
+          filter(!is.na(trump_pickup)) %>% 
+          mutate(dem_change_raw = dem2020 - dem2016) %>%
+          mutate(dem_change_pct = round(((dem2020 - dem2016)/dem2016)*100, digits = 2)) %>%
+          filter(dem_change_raw == 0) %>%
+          mutate(candidate = 'Joseph R. Biden') %>% 
+          group_by(candidate) %>% 
+          summarize(match_vote_prec = n(), total_votes_match = sum(dem_change_raw))
+  )
+
+#Trump won 41 majority nonwhite precincts (6.4%) in 2020 vs. 22 in 2016 (3.9%)
+#a gain of about 2 percentage points of the nonwhite precincts
+demo2016 %>%
+  filter(pct_nonwhite >= 50) %>%
+  mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+  count(winner, name='2016_precincts') %>% 
+  left_join(
+    demo2020 %>%
+      filter(pct_nonwhite >= 50) %>%
+      mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+      count(winner, name='2020_precincts'),
+    by = 'winner'
+  ) %>%
+  adorn_totals(where = c('row')) %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+#what's the average margin? Not sure this is meaningful...
+demo2016 %>%
+  filter(pct_nonwhite >= 50) %>%
+  mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>%
+  group_by(winner) %>% 
+  summarize(avg_margin_2016 = mean(abs(trump_margin))) %>% 
+  left_join(
+    demo2020 %>%
+      filter(pct_nonwhite >= 50) %>%
+      mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+      group_by(winner) %>% 
+      summarize(avg_margin_2020 = mean(abs(trump_margin))),
+    by = 'winner'
+    )
+
+#but just like in 2016, Trump failed to win a single majority black precinct
+demo2016 %>%
+  filter(pct_black >= 50) %>%
+  mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+  count(winner, name='2016_precincts') %>% 
+  left_join(
+    demo2020 %>%
+      filter(pct_black >= 50) %>%
+      mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+      count(winner, name='2020_precincts')
+  ) %>%
+  adorn_totals(where = c('row')) %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+#in 2020, Trump picked up three more majority American Indian/Alaskan Native
+#precincts compared to in 2016
+demo2016 %>%
+  filter(pct_indian_aknative >= 50) %>%
+  mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+  count(winner, name='2016_precincts') %>% 
+  left_join(
+    demo2020 %>%
+      filter(pct_indian_aknative >= 50) %>%
+      mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+      count(winner, name='2020_precincts')
+  ) %>%
+  adorn_totals(where = c('row')) %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+
+
+
