@@ -1,10 +1,10 @@
 #2020 precinct sort analysis
 #code used to analyze the precinct sort data from 2020 and 2016
 
-
 # Setting up --------------------------------------------------------------
 
 #set our working directory
+#NOTE: Change this to whatever your working directory is
 setwd("~/Dropbox/projects/newsobserver/precinct_sort/data")
 
 #load libraries
@@ -25,6 +25,7 @@ library(readr)
 #all files downloaded from SBE site using:
 #wget -i all_precincts2020.txt
 #wget -i all_precincts2016.txt
+#in the command line/terminal
 
 #create a list of files to download
 county_files2020 <- list.files(path = './county_files2020', full.names = TRUE)
@@ -135,7 +136,8 @@ registration2016 <- registration2016 %>%
          voter_status_desc, reason_cd, voter_status_reason_desc, absent_ind, 
          name_prefx_cd, last_name, first_name, midl_name, name_sufx_cd, race_code, 
          race_desc, ethnic_code, ethnic_desc, party_cd, party_desc, sex_code, 
-         sex, age, precinct_abbrv, precinct_desc, vtd_abbrv, vtd_desc, age_group
+         sex, age, municipality_desc, precinct_abbrv, precinct_desc, cong_dist_abbrv, 
+         NC_senate_abbrv, NC_house_abbrv, vtd_abbrv, vtd_desc, age_group
          )
 
 registration2020 <- registration2020 %>% 
@@ -144,8 +146,14 @@ registration2020 <- registration2020 %>%
          voter_status_desc, reason_cd, voter_status_reason_desc, absent_ind, 
          name_prefx_cd, last_name, first_name, midl_name, name_sufx_cd, race_code, 
          race_desc, ethnic_code, ethnic_desc, party_cd, party_desc, sex_code, 
-         sex, age, precinct_abbrv, precinct_desc, vtd_abbrv, vtd_desc, age_group
+         sex, age, municipality_desc, precinct_abbrv, precinct_desc, cong_dist_abbrv, 
+         NC_senate_abbrv, NC_house_abbrv, vtd_abbrv, vtd_desc, age_group
   )
+
+#load in our manually coded msa file for our precinct region designation
+#sourced from OMB's 2020 memo (list 1, page 41) here:
+#https://www.whitehouse.gov/wp-content/uploads/2020/03/Bulletin-20-01.pdf
+omb_msa <- read_csv('rural_urban/omb_msa.csv')
 
 # Gut checks --------------------------------------------------------------
 
@@ -365,8 +373,8 @@ precinct_sort2016 %>%
   adorn_totals(where = c('row')) %>% 
   kable('simple')
 
-#for 2020, roll up the unmapped votes by county
-#and calculate a percentage of total votes unmapped
+#for 2020, 16 total counties have unsorted votes,
+#with particular problems in Surry, Halifax, Tyrrell and Duplin
 precinct_sort2020 %>% 
   filter(contest_title == 'US PRESIDENT') %>% 
   filter(candidate_name == 'Joseph R. Biden' | candidate_name == 'Donald J. Trump') %>%
@@ -384,7 +392,6 @@ precinct_sort2020 %>%
   left_join(
     precinct_sort2020 %>% 
       filter(contest_title == 'US PRESIDENT') %>% 
-      filter(candidate_name == 'Joseph R. Biden' | candidate_name == 'Donald J. Trump') %>%
       group_by(county) %>%
       summarize(total_dr_votes = sum(vote_ct)),
     by = 'county'
@@ -402,7 +409,7 @@ precinct_sort2020 %>%
 #TOTAL: 1567
 #everything else is unsorted provisional/absentee etc
 
-# Matching precinct data -----------------------------------------------------------------
+# Matching up precinct data -----------------------------------------------------------------
 
 #create a new file that matches up the precinct data from 2016 and 2020
 #and calculates raw/pct point margins of victories and their changes
@@ -475,7 +482,6 @@ precinct_performance <- nc_precincts %>%
   mutate(trump_pickup = trump_margin2020 - trump_margin2016) %>% 
   relocate(trump_pickup, .after = trump_margin2016) %>%
   arrange(abs(trump_pickup))
-
 
 # Mapping -----------------------------------------------------------------
 
@@ -653,30 +659,6 @@ precinct_performance %>%
        title = 'Flipped precincts, 2016 to 2020')
 
 
-# Export to data wrapper --------------------------------------------------
-
-# generate a separate dataframe with centroids split into lat/lng
-#using the WGS-84 CRS (EPSG:4326), per datawrapper specs
-dw_centroids <- precinct_performance %>% 
-  st_transform(4326) %>%
-  mutate(centroid = st_centroid(geometry)) %>% 
-  mutate(lat = unlist(map(centroid,2)),
-         lng = unlist(map(centroid,1))) %>% 
-  relocate(lat, .before = 'geometry') %>%
-  relocate(lng, .before = 'geometry')
-
-#add some additional calculations into a cleaned up file
-#for export for use in datawrapper
-dw_centroids %>%
-  filter(!is.na(trump_pickup)) %>%
-  as.data.frame() %>%
-  mutate(swing_pctpt = abs(trump_pickup)) %>% 
-  mutate(swing_raw = abs((gop2020 - gop2016) - (dem2020 - dem2016))) %>% 
-  mutate(trump_pickup_raw = (gop2020 - gop2016) - (dem2020 - dem2016)) %>% 
-  rename(trump_pickup_pctpt = trump_pickup) %>% 
-  select(id, lat, lng, enr_desc, county_nam,
-         trump_pickup_pctpt, trump_pickup_raw, swing_raw, swing_pctpt) %>%
-  write.csv('dw_centroids.csv', row.names = FALSE)
 
 
 # Exploring mismatched precincts ------------------------------------------
@@ -807,6 +789,8 @@ nc_precincts %>%
 
 # Demographics by precinct ------------------------------------------------
 
+#TODO: Create a version without unknown race
+
 #create a dataframe of demographics by precinct in 2020
 #and join with our precinct sort file
 demo2020 <- registration2020 %>%
@@ -892,6 +876,8 @@ demo2016 <- registration2016 %>%
       mutate(trump_margin = round(((trump_votes - clinton_votes) / total_dr) * 100, digits = 2) ),
     by = c('county_desc' = 'county', 'precinct_abbrv' = 'precinct_code')
   )
+
+#repeat the analysis without the "unknown" category
 
 # Graphing 2016 race by precinct -----------------------------------------------
 
@@ -1097,6 +1083,8 @@ demo2020 %>%
     alpha = FALSE,
     color = guide_legend(override.aes = list(shape = 15, size = 5))
   ) +
+  ylim(0,100) +
+  xlim(0,100) +
   xlab('% nonwhite voters in precinct') +
   ylab('Margin of victory')
 
@@ -1132,7 +1120,15 @@ demo2020 %>%
     color = guide_legend(override.aes = list(shape = 15, size = 5))
   ) +
   xlab('% nonwhite voters in precinct') +
-  ylab('Margin of victory')
+  ylab('Margin of victory') +
+  scale_x_continuous(expand = c(0, 0)) +
+  theme(strip.text.x = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16),
+        legend.text = element_text(size = 16),
+        panel.grid.major.x = element_line( color="grey", size = 0.25 ),
+        panel.grid.major.y = element_line( color="grey", size = 0.25 )
+        )
 
 #plot nonwhite percentages and wins for just dems
 demo2020 %>%
@@ -1197,6 +1193,7 @@ demo2020 %>%
   ylab('Margin of victory')
 
 #plot nonwhite percentages and wins for both dems and gop
+#and mark native american precincts
 demo2020 %>%
   mutate(margin_change = ifelse(trump_margin >= 0, 'Trump win','Biden win')) %>% 
   ggplot(aes(x = pct_nonwhite, y=(abs(trump_margin)), 
@@ -1320,6 +1317,270 @@ precinct_performance_data %>%
   ylab('Count of precincts') +
   xlab('Swing in net votes')
 
+
+# Rural-urban classifications ---------------------------------------------
+
+#generate a list of classifications for each 2020 precinct using
+#OMB designations and methodology from Michael Bitzer, Catawba college
+#http://www.oldnorthstatepolitics.com/p/blog-page_5.html
+
+##central_city##
+#precincts with a municipality_desc matching an OMB MSA and located
+#in an OMB MSA central county_desc
+##urban_suburb##
+#precincts in an OMB MSA central county_desc outside of a OMB MSA municipality
+##surrounding_suburban##
+#precincts in an OMB MSA noncentral county_desc
+##rural##
+#precincts in counties not designated in an OMB MSA
+
+#generate a list of 2,663 precinct/county/municipality groups
+#from our registration file with valid municipalities
+#making sure we evaluate duplicate municipality designations and taking
+#the greater number of registered voters to standardize the designation
+precinct_regions2020 <- registration2020 %>% 
+  filter(precinct_abbrv != ' ') %>%
+  mutate(city = gsub('CITY OF |TOWN OF ', '', municipality_desc)) %>% 
+  count(county_desc, precinct_abbrv, city, name = 'sub_count') %>% 
+  left_join(
+    registration2020 %>% 
+      filter(precinct_abbrv != ' ') %>%
+      count(county_desc, precinct_abbrv, name = 'prec_count'),
+    by = c('county_desc', 'precinct_abbrv')
+  ) %>% 
+  mutate(sub_pct = round((sub_count/prec_count)*100,1)) %>% 
+  arrange(county_desc, precinct_abbrv, desc(sub_pct)) %>% 
+  group_by(county_desc, precinct_abbrv) %>% 
+  top_n(1,sub_pct) %>%
+  ungroup() %>% 
+  left_join(
+    omb_msa %>% 
+      distinct(msa_id, county, central_county) %>%
+      rename(msa_county_status = central_county) %>% 
+      filter(msa_id != 20500 | county != 'WAKE'),
+    by = c('county_desc' = 'county')
+  ) %>% 
+  left_join(
+    omb_msa %>% 
+      select(-msa_desc, -notes) %>% 
+      rename(msa_city_status = central_county),
+    by = c('county_desc' = 'county', 'city' = 'center_city')
+  ) %>% 
+  mutate(
+    precinct_region = ifelse(
+      is.na(msa_county_status), '4', ifelse(
+        msa_county_status == 0, '3', ifelse(
+          is.na(msa_city_status),  '2', '1'
+        )
+      )
+    )
+  ) %>% 
+  select(-msa_county_status, -msa_city_status) %>%
+  mutate(msa_id = ifelse(msa_id.x != msa_id.y, msa_id.y, msa_id.x)) %>%
+  mutate(county_pre = paste0(county_desc, '_', precinct_abbrv)) %>% 
+  select(county_desc, precinct_abbrv, county_pre, city, msa_id, precinct_region) 
+
+#precinct_region     n
+#1                 755 vs 793
+#2                 811 vs 809
+#3                 342 vs 306
+#4                 755 vs 755
+#if we overwrite the cities, but doesn't change much beyond 
+#the Concord/Gastonia pieces, so let's stick with the methodology
+precinct_regions2020 %>%
+  ungroup() %>% 
+  count(precinct_region)
+
+precinct_regions2020 %>% 
+  write.csv('rural_urban/precinct_regions2020.csv', row.names = FALSE)
+
+#same thing for 2016
+precinct_regions2016 <- registration2016 %>% 
+  filter(precinct_abbrv != ' ') %>%
+  mutate(city = gsub('CITY OF |TOWN OF ', '', municipality_desc)) %>% 
+  count(county_desc, precinct_abbrv, city, name = 'sub_count') %>% 
+  left_join(
+    registration2016 %>% 
+      filter(precinct_abbrv != ' ') %>%
+      count(county_desc, precinct_abbrv, name = 'prec_count'),
+    by = c('county_desc', 'precinct_abbrv')
+  ) %>% 
+  mutate(sub_pct = round((sub_count/prec_count)*100,1)) %>% 
+  arrange(county_desc, precinct_abbrv, desc(sub_pct)) %>% 
+  group_by(county_desc, precinct_abbrv) %>% 
+  top_n(1,sub_pct) %>%
+  ungroup() %>% 
+  left_join(
+    omb_msa %>% 
+      distinct(msa_id, county, central_county) %>%
+      rename(msa_county_status = central_county) %>% 
+      filter(msa_id != 20500 | county != 'WAKE'),
+    by = c('county_desc' = 'county')
+  ) %>% 
+  left_join(
+    omb_msa %>% 
+      select(-msa_desc, -notes) %>% 
+      rename(msa_city_status = central_county),
+    by = c('county_desc' = 'county', 'city' = 'center_city')
+  ) %>% 
+  mutate(
+    precinct_region = ifelse(
+      is.na(msa_county_status), '4', ifelse(
+        msa_county_status == 0, '3', ifelse(
+          is.na(msa_city_status),  '2', '1'
+        )
+      )
+    )
+  ) %>% 
+  select(-msa_county_status, -msa_city_status) %>%
+  mutate(msa_id = ifelse(msa_id.x != msa_id.y, msa_id.y, msa_id.x)) %>%
+  mutate(county_pre = paste0(county_desc, '_', precinct_abbrv)) %>% 
+  select(county_desc, precinct_abbrv, county_pre, city, msa_id, precinct_region)
+
+# Margins by rural-urban breakdown ----------------------------------------
+
+#by number of precincts
+demo2016 %>% 
+  left_join(
+    precinct_regions2016 %>% 
+      select(-county_pre, -city),
+    by = c('county_desc','precinct_abbrv')
+  ) %>% 
+  mutate(winner = ifelse(trump_margin >= 0, 'trump_raw','clinton_biden_raw')) %>%
+  tabyl(precinct_region, winner) %>% 
+  mutate(year = 2016) %>% 
+  relocate(year, .after = precinct_region) %>% 
+  rbind(.,
+        demo2020 %>% 
+          left_join(
+            precinct_regions2020 %>% 
+              select(-county_pre, -city),
+            by = c('county_desc','precinct_abbrv')
+          ) %>% 
+          mutate(winner = ifelse(trump_margin > 0, 'trump_raw','clinton_biden_raw')) %>%
+          tabyl(precinct_region, winner) %>% 
+          mutate(year = 2020) %>% 
+          relocate(year, .after = precinct_region)
+  ) %>% 
+  arrange(precinct_region, year) %>% 
+  mutate(region = ifelse(precinct_region == 1, 'Central city',
+                         ifelse(precinct_region == 2, 'Urban suburb',
+                                ifelse(precinct_region == 3,'Surrounding suburban','Rural')))) %>% 
+  relocate(region, .after = precinct_region) %>% 
+  mutate('Clinton/Biden' = round((clinton_biden_raw/(clinton_biden_raw + trump_raw))*100,1)) %>% 
+  mutate('Trump' = round((trump_raw/(clinton_biden_raw + trump_raw))*100,1)) %>% 
+  select(precinct_region, region, year, 'Trump', 'Clinton/Biden') %>% 
+  write.csv('precinct_region_breakdown.csv', row.names = FALSE)
+
+#by vote share
+demo2016 %>% 
+  left_join(
+    precinct_regions2016 %>% 
+      select(-county_pre, -city),
+    by = c('county_desc','precinct_abbrv')
+  ) %>% 
+  mutate(winner = ifelse(trump_margin >= 0, 'trump_raw','clinton_biden_raw')) %>%
+  group_by(precinct_region) %>% 
+  summarize(clinton_biden_raw = sum(clinton_votes), trump_raw = sum(trump_votes)) %>% 
+  ungroup()%>%
+  mutate(year = 2016) %>% 
+  relocate(year, .after = precinct_region) %>% 
+  rbind(.,
+        demo2020 %>% 
+          left_join(
+            precinct_regions2020 %>% 
+              select(-county_pre, -city),
+            by = c('county_desc','precinct_abbrv')
+          ) %>% 
+          mutate(winner = ifelse(trump_margin >= 0, 'trump_raw','clinton_biden_raw')) %>%
+          group_by(precinct_region) %>% 
+          summarize(clinton_biden_raw = sum(biden_votes), trump_raw = sum(trump_votes)) %>% 
+          ungroup() %>% 
+          mutate(year = 2020) %>% 
+          relocate(year, .after = precinct_region) 
+        ) %>% 
+  arrange(precinct_region, year) %>% 
+  mutate(region = ifelse(precinct_region == 1, 'Central city',
+                         ifelse(precinct_region == 2, 'Urban suburb',
+                                ifelse(precinct_region == 3,'Surrounding suburban','Rural')))) %>% 
+  relocate(region, .after = precinct_region) %>% 
+  mutate('Clinton/Biden' = round((clinton_biden_raw/(clinton_biden_raw + trump_raw))*100,1)) %>% 
+  mutate('Trump' = round((trump_raw/(clinton_biden_raw + trump_raw))*100,1)) %>% 
+  select(precinct_region, region, year, 'Trump', 'Clinton/Biden') %>% 
+  write.csv('precinct_region_vote_share.csv', row.names = FALSE)
+
+
+# Splitting the ticket ----------------------------------------------------
+
+#129 precincts elected both Donald Trump and Roy Cooper (none vice versa)
+#out of 2658 precincts that match with our 2020 shapefile (nonadmin precincts)
+nc_precincts_data %>%
+  mutate(county_nam = toupper(county_nam)) %>%
+  distinct(county_nam, prec_id) %>% 
+  left_join(
+    precinct_sort2020 %>%
+      filter(contest_title == 'US PRESIDENT') %>%
+      filter(candidate_name == 'Donald J. Trump' | candidate_name == 'Joseph R. Biden') %>% 
+      group_by(county, precinct_code, candidate_name) %>% 
+      summarize(total_votes = sum(vote_ct)) %>%
+      ungroup() %>% 
+      spread(candidate_name, total_votes) %>% 
+      rename(trump = 'Donald J. Trump', biden = 'Joseph R. Biden') %>% 
+      mutate(president = ifelse(trump > biden, 'R', ifelse(biden > trump, 'D','T'))) %>% 
+      left_join(
+        precinct_sort2020 %>%
+          filter(contest_title == 'NC GOVERNOR') %>%
+          filter(candidate_name == 'Dan Forest' | candidate_name == 'Roy Cooper') %>% 
+          group_by(county, precinct_code, candidate_name) %>% 
+          summarize(total_votes = sum(vote_ct)) %>%
+          ungroup() %>% 
+          spread(candidate_name, total_votes) %>% 
+          rename(forest = 'Dan Forest', cooper = 'Roy Cooper') %>% 
+          mutate(governor = ifelse(forest > cooper, 'R', ifelse(cooper > forest, 'D','T'))),
+        by = c('county', 'precinct_code')
+      ),
+    by = c( 'county_nam' = 'county', 'prec_id' = 'precinct_code')
+  ) %>% 
+  filter(governor != president) %>%
+  filter(president != 'T') %>% 
+  filter(governor != 'T' ) %>% 
+  mutate(county_pre = paste0(county_nam, '_', prec_id)) %>% 
+  mutate(split = 1) %>% 
+  relocate(county_pre, .before = 'prec_id') %>% 
+  relocate(split, .before = 'prec_id') %>% 
+  write.csv('split_precincts.csv', row.names = FALSE)
+
+#break that down
+nc_precincts_data %>%
+  mutate(county_nam = toupper(county_nam)) %>%
+  distinct(county_nam, prec_id) %>% 
+  left_join(
+    precinct_sort2020 %>%
+      filter(contest_title == 'US PRESIDENT') %>%
+      filter(candidate_name == 'Donald J. Trump' | candidate_name == 'Joseph R. Biden') %>% 
+      group_by(county, precinct_code, candidate_name) %>% 
+      summarize(total_votes = sum(vote_ct)) %>%
+      ungroup() %>% 
+      spread(candidate_name, total_votes) %>% 
+      rename(trump = 'Donald J. Trump', biden = 'Joseph R. Biden') %>% 
+      mutate(president = ifelse(trump > biden, 'R', ifelse(biden > trump, 'D','T'))) %>% 
+      left_join(
+        precinct_sort2020 %>%
+          filter(contest_title == 'NC GOVERNOR') %>%
+          filter(candidate_name == 'Dan Forest' | candidate_name == 'Roy Cooper') %>% 
+          group_by(county, precinct_code, candidate_name) %>% 
+          summarize(total_votes = sum(vote_ct)) %>%
+          ungroup() %>% 
+          spread(candidate_name, total_votes) %>% 
+          rename(forest = 'Dan Forest', cooper = 'Roy Cooper') %>% 
+          mutate(governor = ifelse(forest > cooper, 'R', ifelse(cooper > forest, 'D','T'))),
+        by = c('county', 'precinct_code')
+      ),
+    by = c( 'county_nam' = 'county', 'prec_id' = 'precinct_code')
+  ) %>% 
+  filter(governor != president) %>% 
+  count(paste0(president,governor), name = 'combo')
+
 # Questions to answer -----------------------------------------------------
 
 #simplify our spatial data for analysis
@@ -1389,9 +1650,9 @@ precinct_performance_data %>%
   adorn_totals() %>%
   kable('simple')
 
-#Trump overperformed or matched in 987 precincts vs. Biden's 1611
-#Trump netted 108,167 votes across the precincts where he overperformed
-#compared to Biden's 291,417 across the precincts where he overperformed
+#Trump outperformed or matched in 987 precincts vs. Biden's 1611
+#Trump netted 108,167 votes across the precincts where he outperformed
+#compared to Biden's 291,417 across the precincts where he outperformed
 precinct_performance_data %>% 
   group_by(trump_overperform = trump_pickup >= 0) %>% 
   summarize(precinct_count = n(),
@@ -1531,6 +1792,119 @@ demo2016 %>%
   adorn_ns(position = "front") %>% 
   kable('simple')
 
+#what about competitive districts?
+nc_precincts_data %>%
+  mutate(county_nam = toupper(county_nam)) %>%
+  distinct(county_nam, prec_id) %>% 
+  left_join(
+    precinct_sort2020 %>%
+      filter(contest_title == 'US PRESIDENT') %>%
+      filter(candidate_name == 'Donald J. Trump' | candidate_name == 'Joseph R. Biden') %>% 
+      group_by(county, precinct_code, candidate_name) %>% 
+      summarize(total_votes = sum(vote_ct)) %>%
+      ungroup() %>% 
+      spread(candidate_name, total_votes) %>% 
+      rename(trump = 'Donald J. Trump', biden = 'Joseph R. Biden'),
+    by = c( 'county_nam' = 'county', 'prec_id' = 'precinct_code')
+  ) %>%
+  mutate(margin = abs(round(((trump - biden) / (trump + biden)) * 100, digits = 2))) %>% 
+  mutate(competitive = ifelse(margin < 10,1,0)) %>% 
+  count(competitive, name = 'precinct_count') %>%
+  adorn_totals() %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
 
+#and in 2016
+nc_precincts_data2016 %>%
+  rename(county_nam = COUNTY_NAM) %>% 
+  rename(prec_id = PREC_ID) %>% 
+  mutate(county_nam = toupper(county_nam)) %>%
+  distinct(county_nam, prec_id) %>% 
+  left_join(
+    precinct_sort2016 %>%
+      filter(contest_title == 'US PRESIDENT') %>%
+      filter(candidate_name == 'Donald J. Trump' | candidate_name == 'Hillary Clinton') %>% 
+      group_by(county, precinct_code, candidate_name) %>% 
+      summarize(total_votes = sum(vote_ct)) %>%
+      ungroup() %>% 
+      spread(candidate_name, total_votes) %>% 
+      rename(trump = 'Donald J. Trump', clinton = 'Hillary Clinton'),
+    by = c( 'county_nam' = 'county', 'prec_id' = 'precinct_code')
+  ) %>%
+  mutate(margin = abs(round(((trump - clinton) / (trump + clinton)) * 100, digits = 2))) %>% 
+  mutate(competitive = ifelse(margin < 10,1,0)) %>% 
+  count(competitive, name = 'precinct_count') %>%
+  adorn_totals() %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
 
+# Export to data wrapper --------------------------------------------------
+
+# generate a separate dataframe with centroids split into lat/lng
+#using the WGS-84 CRS (EPSG:4326), per datawrapper specs
+dw_centroids <- precinct_performance %>% 
+  st_transform(4326) %>%
+  mutate(centroid = st_centroid(geometry)) %>% 
+  mutate(lat = unlist(map(centroid,2)),
+         lng = unlist(map(centroid,1))) %>% 
+  relocate(lat, .before = 'geometry') %>%
+  relocate(lng, .before = 'geometry')
+
+#add some additional calculations into a cleaned up file
+#for export for use in datawrapper
+dw_centroids %>%
+  filter(!is.na(trump_pickup)) %>%
+  as.data.frame() %>%
+  mutate(swing_pctpt = abs(trump_pickup)) %>% 
+  mutate(swing_raw = abs((gop2020 - gop2016) - (dem2020 - dem2016))) %>% 
+  mutate(trump_pickup_raw = (gop2020 - gop2016) - (dem2020 - dem2016)) %>% 
+  mutate(precinct_size = gop2020 + dem2020) %>% 
+  rename(trump_pickup_pctpt = trump_pickup) %>%
+  mutate(map_labels = ifelse(
+    enr_desc == 'LUMBERTON  5' & county_nam == 'ROBESON', 'Lumberton', ifelse(
+      enr_desc == 'CROSS CREEK 01' & county_nam == 'CUMBERLAND', 'Fayetteville', ifelse(
+        enr_desc == 'ST MARKS LUTHERAN CHURCH' & county_nam == 'BUNCOMBE', 'Asheville', ifelse(
+          enr_desc == '011' & county_nam == 'MECKLENBURG', 'Charlotte', ifelse(
+            enr_desc == 'G11' & county_nam == 'GUILFORD', 'Greensboro', ifelse(
+              enr_desc == '01-14' & county_nam == 'WAKE', 'Raleigh', ifelse(
+                enr_desc == 'W03' & county_nam == 'NEW HANOVER', 'Wilmington', ifelse(
+                  enr_desc == 'GRENVILLE 8A' & county_nam == 'PITT', 'Greenville','' 
+      ))))))))) %>% 
+  select(id, lat, lng, enr_desc, county_nam,
+         trump_pickup_pctpt, map_labels, trump_pickup_raw,
+         swing_raw, swing_pctpt, precinct_size) %>%
+  write.csv('dw_centroids.csv', row.names = FALSE)
+
+#robeson county only
+precinct_performance %>% 
+  as.data.frame() %>% 
+  filter(county_nam == 'ROBESON') %>% 
+  mutate(precinct_size = gop2020 + dem2020) %>% 
+  rename(trump_pickup_pctpt = trump_pickup) %>%
+  select(-geometry, -of_prec_id, -blockid, -county_id, -county_pre) %>% 
+  relocate(trump_pickup_pctpt, .after = enr_desc) %>% 
+  mutate(map_labels = ifelse(
+    enr_desc == 'LUMBERTON  5', 'Lumberton', ifelse(
+      enr_desc == 'RED SPRINGS', 'Red Springs', ifelse(
+        enr_desc == 'ST PAULS', 'St. Pauls',''
+      )
+    )))%>% 
+  write.csv('robeson_focus.csv', row.names = FALSE)
+
+demo2020 %>% 
+  write.csv('racial_divide.csv', row.names = FALSE)
+
+precinct_performance_data %>% 
+  mutate(county_pre = paste0(county_nam, '_', prec_id)) %>% 
+  relocate(county_pre, .after = county_nam) %>% 
+  mutate(flip = ifelse(trump_margin2016 * trump_margin2020 < 0, 
+                       ifelse(trump_margin2020 > 0, 'Flip to Trump','Flip to Biden'),
+                       NA)) %>%
+  relocate(flip, .after = county_pre) %>%
+  filter(!is.na(flip)) %>% 
+  write.csv('precinct_flip.csv', row.names = FALSE)
 
