@@ -16,7 +16,6 @@ library(stringr)
 library(scales)
 library(readr)
 
-
 # Loading data ------------------------------------------------------------
 
 #Data through the State Board of Elections FTP site
@@ -150,10 +149,17 @@ registration2020 <- registration2020 %>%
          NC_senate_abbrv, NC_house_abbrv, vtd_abbrv, vtd_desc, age_group
   )
 
+#export simplified versions of the file so the rest of the team can cq
+registration2016 %>% 
+  write.csv('registration2016.csv',row.names = FALSE)
+
+registration2020 %>% 
+  write.csv('registration2020.csv',row.names = FALSE)
+
 #load in our manually coded msa file for our precinct region designation
 #sourced from OMB's 2020 memo (list 1, page 41) here:
 #https://www.whitehouse.gov/wp-content/uploads/2020/03/Bulletin-20-01.pdf
-omb_msa <- read_csv('rural_urban/omb_msa.csv')
+omb_msa <- read_csv('rural_urban/ruralomb_msa.csv')
 
 # Gut checks --------------------------------------------------------------
 
@@ -218,7 +224,6 @@ precinct_sort2020 %>%
   ) %>% 
   mutate(biden_margin = round(((biden_votes - trump_votes) / total_dr) * 100, digits = 2) ) %>% 
   arrange(desc(biden_margin)) %>% 
-  #nrow() %>% 
   adorn_totals() %>% 
   tail(1) %>% 
   kable('simple')
@@ -789,7 +794,12 @@ nc_precincts %>%
 
 # Demographics by precinct ------------------------------------------------
 
-#TODO: Create a version without unknown race
+#undesignated race categories can skew our data, so we're going to remove
+#those registered voters from our demographic calculations
+#but we will still include them in our totals for other calculations
+
+registration2020 %>% 
+  distinct(race_desc)
 
 #create a dataframe of demographics by precinct in 2020
 #and join with our precinct sort file
@@ -799,14 +809,16 @@ demo2020 <- registration2020 %>%
         precinct_abbrv, 
         race = ifelse(race_desc == 'WHITE', 'white', 
                       ifelse(race_desc == 'BLACK or AFRICAN AMERICAN', 'black',
-                             ifelse(race_desc == 'INDIAN AMERICAN or ALASKA NATIVE', 'indian_aknative','other'
-                                    ))
+                             ifelse(race_desc == 'INDIAN AMERICAN or ALASKA NATIVE', 'indian_aknative',
+                                    ifelse(race_desc == 'UNDESIGNATED', 'unk',
+                                           'other'
+                                    )))
                       ), 
         name = 'voters'
         ) %>%
   spread(race, voters) %>%
-  replace_na(list(black = 0, indian_aknative = 0, other = 0)) %>%
-  mutate(total = white + black + indian_aknative + other) %>% 
+  replace_na(list(black = 0, indian_aknative = 0, unk = 0, other = 0)) %>%
+  mutate(total = white + black + indian_aknative + unk + other) %>% 
   mutate(pct_nonwhite = round(((black + indian_aknative + other)/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
   mutate(pct_black = round((black/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
   mutate(pct_indian_aknative = round((indian_aknative/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
@@ -842,14 +854,16 @@ demo2016 <- registration2016 %>%
         precinct_abbrv, 
         race = ifelse(race_desc == 'WHITE', 'white', 
                       ifelse(race_desc == 'BLACK or AFRICAN AMERICAN', 'black',
-                             ifelse(race_desc == 'INDIAN AMERICAN or ALASKA NATIVE', 'indian_aknative','other'
-                             ))
+                             ifelse(race_desc == 'INDIAN AMERICAN or ALASKA NATIVE', 'indian_aknative',
+                                    ifelse(race_desc == 'UNDESIGNATED', 'unk',
+                                           'other'
+                                    )))
         ), 
         name = 'voters'
   ) %>%
   spread(race, voters) %>%
-  replace_na(list(black = 0, indian_aknative = 0, other = 0)) %>%
-  mutate(total = white + black + indian_aknative + other) %>% 
+  replace_na(list(black = 0, indian_aknative = 0, unk = 0, other = 0)) %>%
+  mutate(total = white + black + indian_aknative + unk + other) %>% 
   mutate(pct_nonwhite = round(((black + indian_aknative + other)/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
   mutate(pct_black = round((black/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
   mutate(pct_indian_aknative = round((indian_aknative/(white + black + indian_aknative + other)) * 100, digits=2)) %>% 
@@ -876,8 +890,6 @@ demo2016 <- registration2016 %>%
       mutate(trump_margin = round(((trump_votes - clinton_votes) / total_dr) * 100, digits = 2) ),
     by = c('county_desc' = 'county', 'precinct_abbrv' = 'precinct_code')
   )
-
-#repeat the analysis without the "unknown" category
 
 # Graphing 2016 race by precinct -----------------------------------------------
 
@@ -1321,16 +1333,18 @@ precinct_performance_data %>%
 # Rural-urban classifications ---------------------------------------------
 
 #generate a list of classifications for each 2020 precinct using
-#OMB designations and methodology from Michael Bitzer, Catawba college
+#OMB designations:
+#https://www.whitehouse.gov/wp-content/uploads/2020/03/Bulletin-20-01.pdf
+#and methodology from Michael Bitzer, Catawba college
 #http://www.oldnorthstatepolitics.com/p/blog-page_5.html
 
 ##central_city##
 #precincts with a municipality_desc matching an OMB MSA and located
 #in an OMB MSA central county_desc
 ##urban_suburb##
-#precincts in an OMB MSA central county_desc outside of a OMB MSA municipality
+#precincts in an MSA's primary county/counties outside of a OMB MSA municipality
 ##surrounding_suburban##
-#precincts in an OMB MSA noncentral county_desc
+#precincts in an OMB MSA county_desc
 ##rural##
 #precincts in counties not designated in an OMB MSA
 
@@ -1380,11 +1394,6 @@ precinct_regions2020 <- registration2020 %>%
   mutate(county_pre = paste0(county_desc, '_', precinct_abbrv)) %>% 
   select(county_desc, precinct_abbrv, county_pre, city, msa_id, precinct_region) 
 
-#precinct_region     n
-#1                 755 vs 793
-#2                 811 vs 809
-#3                 342 vs 306
-#4                 755 vs 755
 #if we overwrite the cities, but doesn't change much beyond 
 #the Concord/Gastonia pieces, so let's stick with the methodology
 precinct_regions2020 %>%
@@ -1723,8 +1732,8 @@ precinct_performance_data %>%
           summarize(match_vote_prec = n(), total_votes_match = sum(dem_change_raw))
   )
 
-#Trump won 41 majority nonwhite precincts (6.4%) in 2020 vs. 22 in 2016 (3.9%)
-#a gain of about 2 percentage points of the nonwhite precincts
+#Trump won 27 majority nonwhite precincts (5%) in 2020 vs. 18 in 2016 (3.4%)
+#a gain of less than 2 percentage points of the nonwhite precincts
 demo2016 %>%
   filter(pct_nonwhite >= 50) %>%
   mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
@@ -1757,7 +1766,7 @@ demo2016 %>%
     by = 'winner'
     )
 
-#but just like in 2016, Trump failed to win a single majority black precinct
+#but just like in 2016, Trump won only a single majority black precinct
 demo2016 %>%
   filter(pct_black >= 50) %>%
   mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
@@ -1774,8 +1783,19 @@ demo2016 %>%
   adorn_ns(position = "front") %>% 
   kable('simple')
 
+#Both the M1 precinct in Bertie County
+demo2016 %>%
+  filter(pct_black >= 50) %>%
+  mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+  filter(winner == 'Trump')
+
+demo2020 %>%
+  filter(pct_black >= 50) %>%
+  mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
+  filter(winner == 'Trump')
+
 #in 2020, Trump picked up three more majority American Indian/Alaskan Native
-#precincts compared to in 2016
+#precincts compared to in 2016, out of a total of 17
 demo2016 %>%
   filter(pct_indian_aknative >= 50) %>%
   mutate(winner = ifelse(trump_margin >= 0, 'Trump','Biden/Clinton')) %>% 
@@ -1808,7 +1828,7 @@ nc_precincts_data %>%
     by = c( 'county_nam' = 'county', 'prec_id' = 'precinct_code')
   ) %>%
   mutate(margin = abs(round(((trump - biden) / (trump + biden)) * 100, digits = 2))) %>% 
-  mutate(competitive = ifelse(margin < 10,1,0)) %>% 
+  mutate(competitive = ifelse(margin <= 10,1,0)) %>% 
   count(competitive, name = 'precinct_count') %>%
   adorn_totals() %>%
   adorn_percentages('col') %>% 
@@ -1834,13 +1854,150 @@ nc_precincts_data2016 %>%
     by = c( 'county_nam' = 'county', 'prec_id' = 'precinct_code')
   ) %>%
   mutate(margin = abs(round(((trump - clinton) / (trump + clinton)) * 100, digits = 2))) %>% 
-  mutate(competitive = ifelse(margin < 10,1,0)) %>% 
+  mutate(competitive = ifelse(margin <= 10,1,0)) %>% 
   count(competitive, name = 'precinct_count') %>%
   adorn_totals() %>%
   adorn_percentages('col') %>% 
   adorn_pct_formatting() %>%
   adorn_ns(position = "front") %>% 
   kable('simple')
+
+
+# Misc fact checks --------------------------------------------------------
+
+precinct_performance_data %>% 
+  filter(county_nam == 'ROBESON') %>% 
+  arrange(trump_margin2020)
+
+precinct_sort2020 %>% 
+  filter(race)
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 009") %>% 
+  filter(result_type_desc != "OVER VOTES", 
+         result_type_desc != "UNDER VOTES") %>% 
+  group_by(candidate_name) %>% 
+  summarize(all_vt = sum(vote_ct))
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 009") %>% 
+  filter(result_type_desc != "OVER VOTES", 
+         result_type_desc != "UNDER VOTES") %>% 
+  get_dupes(vote_ct) %>% View()
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 009") %>% 
+  #filter(candidate_name == 'Brian Farkas' | candidate_name == 'Perrin Jones') %>% 
+  group_by(candidate_name) %>% 
+  summarize(total_votes = sum(vote_ct))
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 009") %>% 
+  filter(candidate_name == 'Joseph R. Biden' | candidate_name == 'Donald J. Trump') %>% 
+  group_by(candidate_name) %>% 
+  summarize(total_votes = sum(vote_ct))
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 082") %>%
+  filter(candidate_name == 'Aimy Steele' | candidate_name == 'Kristin Baker') %>%
+  group_by(candidate_name) %>% 
+  summarize(total_votes = sum(vote_ct)) %>%
+  arrange(desc(total_votes)) %>% 
+  adorn_totals() %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 082") %>% 
+  distinct(county, precinct_code) %>%
+  left_join(
+    precinct_sort2020 %>% 
+      filter(contest_title == "US PRESIDENT") %>%
+      filter(candidate_name != 'OVER VOTE') %>% 
+      filter(candidate_name != 'UNDER VOTE'),
+    by = c('county','precinct_code')
+  ) %>% 
+  group_by(candidate_name) %>% 
+  summarize(total_votes = sum(vote_ct)) %>%
+  arrange(desc(total_votes)) %>% 
+  adorn_totals() %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 009") %>%
+  filter(candidate_name == 'Brian Farkas' | candidate_name == 'Perrin Jones') %>%
+  group_by(candidate_name) %>% 
+  summarize(total_votes = sum(vote_ct)) %>%
+  arrange(desc(total_votes)) %>% 
+  adorn_totals() %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 009") %>% 
+  distinct(county, precinct_code) %>% 
+  left_join(
+    precinct_sort2020 %>% 
+      filter(contest_title == "US PRESIDENT") %>%
+      filter(candidate_name != 'OVER VOTE') %>% 
+      filter(candidate_name != 'UNDER VOTE'),
+    by = c('county','precinct_code')
+  ) %>% 
+  group_by(candidate_name) %>% 
+  summarize(total_votes = sum(vote_ct)) %>%
+  arrange(desc(total_votes)) %>% 
+  adorn_totals() %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 009") %>%
+  filter(candidate_name == 'Brian Farkas' | candidate_name == 'Perrin Jones') %>%
+  group_by(candidate_name) %>% 
+  summarize(total_votes = sum(vote_ct)) %>%
+  arrange(desc(total_votes)) %>% 
+  adorn_totals() %>%
+  adorn_percentages('col') %>% 
+  adorn_pct_formatting() %>%
+  adorn_ns(position = "front") %>% 
+  kable('simple')
+
+### HD 82
+# filter data just for the hd82 race
+precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 082") %>% 
+  filter(result_type_desc != "OVER VOTES", 
+         result_type_desc != "UNDER VOTES") %>% 
+  group_by(candidate_name) %>% 
+  summarise(all_vt = sum(vote_ct))
+
+# filter precincts in hd 82
+hd82list <- precinct_sort2020 %>% 
+  filter(contest_title == "NC HOUSE OF REPRESENTATIVES DISTRICT 082") %>% 
+  filter(result_type_desc != "OVER VOTES", 
+         result_type_desc != "UNDER VOTES") %>% 
+  distinct(precinct_code, precinct_name, county)
+
+# list
+hd82 <- hd82list$precinct_code
+
+# votes for president in precincts that voted in hd82
+precinct_sort2020 %>% 
+  filter(county == "CABARRUS") %>%
+  filter(precinct_code %in% hd82) %>% 
+  filter(contest_title == 'US PRESIDENT') %>% 
+  filter(result_type_desc != "OVER VOTES",   
+         result_type_desc != "UNDER VOTES") %>% 
+  summarize(total = sum(vote_ct))
 
 # Export to data wrapper --------------------------------------------------
 
