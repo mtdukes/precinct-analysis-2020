@@ -50,6 +50,17 @@ Votes not sorted into precincts|11,922|10,046
 Votes in precincts that don’t match other election year|128,964|145,819
 Total|140,886|155,865
 
+The matched results are largely proportionally similar to the overall results.
+
+### Comparing matched precincts
+
+Candidate|Votes in 2016|Votes in 2020|Raw change|Percent change
+--|--|--|--|--
+Donald J. Trump|2,302,330|2,688,615|386,285|16.78
+Clinton/Biden|2,109,164|2,598,803|489,639|23.21
+
+Both views of the data show a net shift of about 100,000 votes to Democrats in the presidential race.
+
 ## Swing in victory margin
 
 To calculate how much the victory margin in each precinct swung toward Trump or Biden from 2016 to 2020, the N&O used precinct sort data matched between the two election years.
